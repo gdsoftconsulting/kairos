@@ -1,0 +1,31 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  -webkit-box-sizing:border-box;
+  -moz-box-sizing:border-box;
+  box-sizing:border-box;
+  background: #383734; /* grey bg */
+}
+html{
+  padding:8px;
+}
+.terminal {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 11px;
+  display: inline-block;
+  background: #383734 !important; /* grey bg */
+}
+.focused .reverse-video {
+  color: #383734;
+  background: #f0f0f0;
+}
+#loader {
+  position: absolute;
+  z-index: 10;
+  width: 100%;
+  top: 50%;
+  top: calc(50%-18px);
+  text-align: center;
+  color: white;
+}
