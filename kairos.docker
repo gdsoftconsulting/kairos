@@ -1,0 +1,171 @@
+FROM oraclelinux:8
+RUN dnf -y update
+RUN dnf install -y perl
+ADD deps/rpm/perl-IO-Tty-1.12-11.el8.x86_64.rpm /tmp
+ADD deps/rpm/perl-IPC-Run-0.99-1.el8.noarch.rpm /tmp
+RUN rpm -i /tmp/perl-IO-Tty-1.12-11.el8.x86_64.rpm
+RUN rpm -i  /tmp/perl-IPC-Run-0.99-1.el8.noarch.rpm
+
+
+RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+RUN dnf -qy module disable postgresql
+RUN dnf install -y postgresql17-server postgresql17-devel postgresql17-contrib postgresql17 postgresql17-plpython3
+RUN dnf install -y python3
+RUN dnf install -y python3.12 python3.12-devel python3.12-pip
+RUN alternatives --set python /usr/bin/python3.12
+RUN ln  -s /usr/pgsql-17/bin/pg_config /usr/bin/pg_config
+RUN ln  -s /usr/pgsql-17/bin/pg_ctl /usr/bin/pg_ctl
+RUN ln  -s /usr/pgsql-17/bin/initdb /usr/bin/initdb
+
+RUN dnf install -y wget
+RUN dnf install -y make 
+RUN dnf install -y gcc
+RUN dnf install -y vim 
+RUN dnf install -y unzip
+RUN dnf install -y zip
+RUN dnf install -y libaio
+RUN dnf install -y libnsl
+RUN dnf install -y cronie
+RUN dnf install -y psmisc
+RUN dnf install -y openssh-clients
+RUN dnf install -y redhat-rpm-config
+RUN dnf install -y lsof
+RUN dnf install -y procps
+RUN dnf install -y logrotate
+
+
+#### oracledb and postgres environement variables
+ADD deps/zip/instantclient-basic-linux.x64.zip /usr/local/lib
+ADD deps/zip/instantclient-sdk-linux.x64.zip /usr/local/lib 
+WORKDIR /usr/local/lib
+RUN unzip instantclient-basic-linux.x64.zip 
+RUN unzip instantclient-sdk-linux.x64.zip 
+RUN rm instantclient-basic-linux.x64.zip 
+RUN rm instantclient-sdk-linux.x64.zip 
+RUN mv instantclient_19_14 instantclient
+WORKDIR /usr/local/lib/instantclient
+ENV ORACLE_HOME=/usr/local/lib/instantclient
+ENV LD_LIBRARY_PATH=/usr/local/lib/instantclient
+RUN echo ORACLE_HOME=/usr/local/lib/instantclient >> /var/lib/pgsql/.bash_profile
+RUN echo LD_LIBRARY_PATH=/usr/local/lib/instantclient >> /var/lib/pgsql/.bash_profile
+RUN echo PGDATA=/var/lib/pgsql/data >> /var/lib/pgsql/.bash_profile
+RUN echo PATH=/usr/pgsql-17/bin:${PATH} >> /var/lib/pgsql/.bash_profile
+RUN echo export ORACLE_HOME LD_LIBRARY_PATH PATH PGDATA>> /var/lib/pgsql/.bash_profile
+
+### postgres oracle_fdw
+
+ADD deps/tar/oracle_fdw-2.7.0.tar.gz /tmp
+RUN cd /tmp/oracle_fdw-2.7.0 && make && make install
+
+#### pgkairos
+ADD deps/rpm/pgkairos-1.3-1.noarch.rpm /tmp
+RUN cd /tmp && rpm --ignoreos --prefix=$(pg_config --sharedir)/extension -i /tmp/pgkairos-1.3-1.noarch.rpm
+
+#### python & python packages
+RUN python -m pip install --upgrade pip
+RUN python -m pip install python-magic
+RUN python -m pip install asyncinotify
+RUN python -m pip install psycopg2-binary
+RUN python -m pip install sqlalchemy
+RUN python -m pip install plotly
+RUN python -m pip install pandas
+RUN python -m pip install aiohttp
+RUN python -m pip install yarl
+RUN python -m pip install setproctitle
+RUN python -m pip install gunicorn
+RUN python -m pip install psutil
+RUN python -m pip install "dask[complete]"
+RUN python -m pip install streamlit
+RUN python -m pip install streamlit_extras
+RUN python -m pip install streamlit_antd_components
+RUN python -m pip install streamlit-ace
+RUN python -m pip install st-theme
+RUN python -m pip install lxml
+RUN python -m pip install cx_Oracle
+RUN python -m pip install loguru
+RUN python -m pip install fabric
+RUN python -m pip install pscript
+RUN python -m pip install textwrap3
+RUN python -m pip install htmlgenerator
+RUN python -m pip install supervisor
+
+### init postgresql db
+RUN rm -fr /postgres
+RUN ln -s /var/lib/pgsql /postgres
+RUN rm -fr /postgres/17
+RUN mkdir /postgres/backups
+RUN mkdir /postgres/data
+COPY deps/tar/pgboot.tar /postgres/backups
+
+### logrotate configuration ###
+RUN mv /etc/cron.daily/logrotate /etc/cron.hourly
+RUN echo "/var/log/kairos/webserver.log {" > /etc/logrotate.d/webserver && \
+   echo "   compress" >> /etc/logrotate.d/webserver && \
+   echo "   rotate 4" >> /etc/logrotate.d/webserver && \
+   echo "   copytruncate" >> /etc/logrotate.d/webserver && \
+   echo "   size=10M" >> /etc/logrotate.d/webserver && \
+   echo "   weekly" >> /etc/logrotate.d/webserver && \
+   echo "}">> /etc/logrotate.d/webserver
+
+### KAIROS
+ENV KAIROS_VERSION=@@VERSION@@
+RUN mkdir /certificates
+RUN mkdir /autoupload
+RUN mkdir /export
+RUN mkdir /kairos
+COPY src/kairos/index.html /kairos
+COPY src/kairos/client.js /kairos
+COPY src/kairos/setup.py /kairos
+COPY src/kairos/worker.py /kairos
+RUN mkdir /kairos/resources
+COPY deps/html/ /kairos/resources
+RUN mkdir /kairos/pykairos
+COPY src/kairos/pykairos/* /kairos/pykairos
+RUN  cd /kairos && python -m pip install .
+COPY src/kairos/kairos /kairos
+RUN chmod 755 /kairos/kairos
+RUN ln -s /kairos/kairos /usr/local/bin/kairos
+RUN mkdir /var/log/kairos
+
+#### Monitoring KAIROS
+RUN echo '* * * * * psql -d kairos -c "select snap_system()"' > /tmp/crontab && \
+    echo '* * * * * psql -d kairos -c "select snap()"' >> /tmp/crontab && \
+    echo '* * * * * TERM=xterm flock -w1 /tmp/lock watch -n 20 -e -t --precise -x psql -d kairos -c "select snap_detailed(20)"' >> /tmp/crontab && \
+    echo '0 4 * * * psql -d kairos -c "select purge()"' >>/tmp/crontab && \
+    su - postgres -c "crontab /tmp/crontab" && \
+    rm /tmp/crontab
+
+
+RUN adduser app
+RUN usermod -aG wheel app
+RUN usermod --password $(echo ''| openssl passwd -1 -stdin) app
+COPY src/streamlit/app/ /home/app
+RUN chmod 755 /home/app/*
+RUN chown -R app:wheel /home/app
+
+### supervisor configuration
+RUN mkdir /etc/supervisord.d
+### kairos supervisor configuration
+RUN echo "[program:kairos]" > /etc/supervisord.d/kairos.ini && \
+    echo "command=python -m pykairos --bootstrap" >> /etc/supervisord.d/kairos.ini && \
+    echo "killasgroup=true" >> /etc/supervisord.d/kairos.ini
+### app supervisor configuration
+RUN echo "[program:app]" > /etc/supervisord.d/app.ini && \
+    echo "command=streamlit run /home/app/home.py --server.port=8501 --server.address=0.0.0.0 --server.sslCertFile=/certificates/kairos.crt --server.sslKeyFile=/certificates/kairos.key" >> /etc/supervisord.d/app.ini && \
+    echo "killasgroup=true" >> /etc/supervisord.d/app.ini
+RUN echo_supervisord_conf > /etc/supervisord.conf
+RUN sed -i 's/nodaemon=false/nodaemon=true/' /etc/supervisord.conf
+RUN sed -i 's:logfile=/tmp/supervisord.log:logfile=/var/log/supervisord.log:' /etc/supervisord.conf
+RUN sed -i 's/;[include]/[include]/' /etc/supervisord.conf
+RUN sed -i 's:;files.*$:files=/etc/supervisord.d/*.ini:' /etc/supervisord.conf
+
+### certificates configuration
+COPY certificates/* /certificates
+
+### clean
+RUN rm -fr /tmp/oracle*
+RUN rm -fr /tmp/pgkairos*# 
+RUN rm -fr /tmp/*.rpm
+
+WORKDIR /
+CMD supervisord -c /etc/supervisord.conf

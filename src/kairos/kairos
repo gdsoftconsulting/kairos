@@ -1,0 +1,325 @@
+#!/usr/bin/python
+import argparse, json, os, getpass, sys, aiohttp, asyncio, magic
+from loguru import logger
+import warnings
+global result
+
+def sortjson(data):
+    if isinstance(data, dict):
+        return {key: sortjson(value) for key, value in sorted(data.items())}
+    elif isinstance(data, list):
+        return [sortjson(item) for item in data]
+    else:
+        return data
+
+async def post(client, url, data):
+    async with client.post(url, data=data, timeout=None) as resp:
+        return await resp.json()
+async def get(client, url, params):
+    async with client.get(url, params=params, timeout=None) as resp:
+        assert resp.status == 200
+        return await resp.json()
+async def main(loop, method, url, params):
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False),loop=loop) as client:
+        global result
+        result = await post(client, url, params) if method == 'post' else await get(client, url, params)
+
+class Parameter:
+    def __init__(self, n, t):
+        self.name = n
+        self.target = t
+
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+logger.remove()
+logger.add('/var/log/kairosc.log')
+logger.info(' '.join(sys.argv))
+
+PA = Parameter('-a', 'authname')
+PP = Parameter('-p', 'password')
+PS = Parameter('-s', 'service')
+PUS = Parameter('--user', 'user')
+PRO = Parameter('--role', 'role')
+PPA = Parameter('--password', 'newpassword')
+PNE = Parameter('--new', 'newname')
+PNO = Parameter('--nodesdb', 'nodesdb')
+PSY = Parameter('--systemdb', 'systemdb')
+PTP = Parameter('--top', 'top')
+PCL = Parameter('--collection', 'collection')
+PCO = Parameter('--colors', 'colors')
+PLG = Parameter('--logging', 'logging')
+PLO = Parameter('--liveobject', 'liveobject')
+PTE = Parameter('--template', 'template')
+PWA = Parameter('--wallpaper', 'wallpaper')
+PME = Parameter('--member', 'member')
+PPL = Parameter('--plotorientation', 'plotorientation')
+PID = Parameter('--id', 'id')
+PTY = Parameter('--type', 'type')
+PDA = Parameter('--database', 'database')
+PSO = Parameter('--source', 'source')
+PFI = Parameter('--file', 'file')
+PEV = Parameter('--events', 'events')
+PFR = Parameter('--from', 'efrom')
+PTO = Parameter('--to', 'eto')
+PPN = Parameter('--pattern', 'pattern')
+PQY = Parameter('--query', 'query')
+PCH = Parameter('--chart', 'chart')
+PWI = Parameter('--width', 'width')
+PHE = Parameter('--height', 'height')
+PSE = Parameter('--aggregatorselector', 'aggregatorselector')
+PTK = Parameter('--aggregatortake', 'aggregatortake')
+PTF = Parameter('--aggregatortimefilter', 'aggregatortimefilter')
+PSK = Parameter('--aggregatorskip', 'aggregatorskip')
+PST = Parameter('--aggregatorsort', 'aggregatorsort')
+PMT = Parameter('--aggregatormethod', 'aggregatormethod')
+
+def get_parameters(parser, args, service):
+
+    handled_services = ['aggregateaddnode', 'applyaggregator', 'applyliveobject', 'buildallcollectioncaches', 'buildprogenycaches', 'buildcollectioncache', 'changepassword', 'checkuserpassword', 'checkserverconfig', 'clearcollectioncache', 'clearprogenycaches', 'compareaddnode', 'creategrant', 'createnode', 'createrole', 'createuser', 'createsystem', 'deletegrant', 'deletenode', 'deleteobject', 'deleterole', 'deleteuser', 'displaycollection', 'dropcollectioncache', 'duplicatenode', 'emptytrash', 'executequery', 'export', 'getcollections', 'getid', 'getmember', 'getmemberlist', 'getmenus', 'getnode', 'getobject', 'getpath', 'getsettings', 'gettree', 'getBchildren', 'getwholetree', 'import', 'linkfathernode', 'listdatabases', 'listgrants', 'listobjects', 'listnodesdb', 'listroles', 'listsystemdb', 'listusers', 'movenode', 'renamenode', 'runchart', 'setobject', 'unload', 'updatesettings', 'uploadnode', 'uploadobject']
+    admin_services = ['createuser', 'deleteuser', 'createrole', 'deleterole', 'creategrant', 'deletegrant']
+
+    if service not in handled_services:
+        message = '*** Service: ' + service + ' is not handled!'
+        parser.error(message)
+        exit(1)
+
+    mandatory = []
+
+    if service == 'aggregateaddnode': mandatory = [PNO, PFR, PTO]
+    if service == 'applyaggregator': mandatory = [PNO, PSY, PID, PSE, PTK, PTF, PSK, PST, PMT]
+    if service == 'applyliveobject': mandatory = [PNO, PSY, PID, PLO]
+    if service == 'buildallcollectioncaches': mandatory = [PNO, PSY, PID]
+    if service == 'buildcollectioncache': mandatory = [PNO, PSY, PID, PCL]
+    if service == 'buildprogenycaches': mandatory = [PNO, PSY, PID]
+    if service == 'changepassword': mandatory = [PA, PP, PPA]
+    if service == 'checkuserpassword': mandatory = [PA, PP]
+    if service == 'clearcollectioncache': mandatory = [PNO, PSY, PID]
+    if service == 'clearprogenycaches': mandatory = [PNO, PSY, PID]
+    if service == 'compareaddnode': mandatory = [PNO, PFR, PTO]
+    if service == 'creategrant': mandatory = [PA, PP, PUS, PRO]
+    if service == 'createnode': mandatory = [PNO, PID]
+    if service == 'createrole': mandatory = [PA, PP, PRO]
+    if service == 'createuser': mandatory = [PA, PP, PUS]
+    if service == 'deletegrant': mandatory = [PA, PP, PUS, PRO]
+    if service == 'deletenode': mandatory = [PNO, PID]
+    if service == 'deleteobject': mandatory = [PID, PTY, PDA]
+    if service == 'deleterole': mandatory = [PA, PP, PRO]
+    if service == 'deleteuser': mandatory = [PA, PP, PUS]
+    if service == 'displaycollection': mandatory = [PNO, PSY, PID, PCL]
+    if service == 'dropcollectioncache': mandatory = [PNO, PSY, PID, PCL]
+    if service == 'duplicatenode': mandatory = [PNO, PID]
+    if service == 'emptytrash': mandatory = [PNO]
+    if service == 'executequery': mandatory = [PNO, PSY, PID, PQY, PTP]
+    if service == 'export': mandatory = []
+    if service == 'getcollections': mandatory = [PNO, PID]
+    if service == 'getid': mandatory = [PNO, PPN]
+    if service == 'getmember': mandatory = [PNO, PID, PME]
+    if service == 'getmemberlist': mandatory = [PNO, PID]
+    if service == 'getmenus': mandatory = [PNO, PSY]
+    if service == 'getnode': mandatory = [PNO, PID]
+    if service == 'getobject': mandatory = [PID, PTY, PDA]
+    if service == 'getpath': mandatory = [PNO, PID]
+    if service == 'getsettings': mandatory = [PA]
+    if service == 'gettree': mandatory = [PNO, PID]
+    if service == 'getBchildren': mandatory = [PNO, PID]
+    if service == 'getwholetree': mandatory = [PNO]
+    if service == 'import': mandatory = []
+    if service == 'linkfathernode': mandatory = [PNO, PFR, PTO]
+    if service == 'listdatabases': mandatory = []
+    if service == 'listgrants': mandatory = []
+    if service == 'listnodesdb': mandatory = []
+    if service == 'listobjects': mandatory = [PNO, PSY]
+    if service == 'listroles': mandatory = []
+    if service == 'listsystemdb': mandatory = []
+    if service == 'listusers': mandatory = []
+    if service == 'movenode': mandatory = [PNO, PFR, PTO]
+    if service == 'renamenode': mandatory = [PNO, PID, PNE]
+    if service == 'runchart': mandatory = [PNO, PSY, PID, PCO, PTE, PCH, PPL, PTP, PWI, PHE]
+    if service == 'setobject': mandatory = [PDA, PSO]
+    if service == 'unload': mandatory = [PNO, PSY, PID]
+    if service == 'updatesettings': mandatory = [PA, PNO, PSY, PLG, PTE, PCO, PWA, PTP, PPL]
+    if service == 'uploadnode': mandatory = [PNO, PFI, PSY]
+    if service == 'uploadobject': mandatory = [PNO, PFI]
+
+    for m in mandatory:
+        if not vars(args)[m.target]:
+            message = '*** Parameter: ' + m.name + ' is mandatory with service: ' + service + '!'
+            parser.error(message)
+            exit(1)
+    global result
+    isadmin = False
+    for m in mandatory:
+        if m.target == PA.target:
+            loop = asyncio.get_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(main(loop, 'post', 'https://localhost/checkuserpassword', [('user', vars(args)[PA.target]), ('password', vars(args)[PP.target])]))
+            if not result['success']:
+                message = json.dumps(result, indent=4, sort_keys=True)
+                print(message)
+                exit(1)
+            isadmin = result['data']['adminrights']
+    
+    if not isadmin and service in admin_services:
+        message = service + " service must be executed with admin rights!"
+        result=dict(success=False, message=message)
+        message = json.dumps(result, indent=4, sort_keys=True)
+        print(message)
+        exit(1)
+
+    if service == 'aggregateaddnode': 
+        parameters = dict(to=vars(args)[PTO.target], nodesdb=vars(args)[PNO.target])
+        parameters['from'] = vars(args)[PFR.target]
+    if service == 'applyaggregator': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target], aggregatorselector=vars(args)[PSE.target], aggregatorskip=vars(args)[PSK.target], aggregatortake=vars(args)[PTK.target], aggregatorsort=vars(args)[PST.target], aggregatortimefilter=vars(args)[PTF.target], aggregatormethod=vars(args)[PMT.target])
+    if service == 'applyliveobject': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target], liveobject=vars(args)[PLO.target])
+    if service == 'buildallcollectioncaches': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'buildcollectioncache': parameters = dict(id=vars(args)[PID.target], collection=vars(args)[PCL.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'buildprogenycaches': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'changepassword':
+        parameters = aiohttp.FormData()
+        parameters.add_field('user', vars(args)[PA.target])
+        parameters.add_field('password', vars(args)[PP.target])
+        parameters.add_field('new', vars(args)[PPA.target])
+    if service == 'checkuserpassword':
+        parameters = aiohttp.FormData()
+        parameters.add_field('user', vars(args)[PA.target])
+        parameters.add_field('password', vars(args)[PP.target])
+    if service == 'checkserverconfig': parameters = dict()
+    if service == 'clearcollectioncache': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'clearprogenycaches': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'compareaddnode': 
+        parameters = dict(to=vars(args)[PTO.target], nodesdb=vars(args)[PNO.target])
+        parameters['from'] = vars(args)[PFR.target]
+    if service == 'createsystem': parameters = dict()
+    if service == 'creategrant': parameters = dict(role=vars(args)[PRO.target], user=vars(args)[PUS.target])
+    if service == 'createnode': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target])
+    if service == 'createrole': parameters = dict(role=vars(args)[PRO.target])
+    if service == 'createuser': parameters = dict(user=vars(args)[PUS.target])
+    if service == 'deletegrant': parameters = dict(role=vars(args)[PRO.target], user=vars(args)[PUS.target])
+    if service == 'deletenode': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target])
+    if service == 'deleteobject': parameters = dict(id=vars(args)[PID.target], type=vars(args)[PTY.target], database=vars(args)[PDA.target])
+    if service == 'deleterole': parameters = dict(role=vars(args)[PRO.target])
+    if service == 'deleteuser': parameters = dict(user=vars(args)[PUS.target])
+    if service == 'displaycollection': parameters = dict(id=vars(args)[PID.target], collection=vars(args)[PCL.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'dropcollectioncache': parameters = dict(id=vars(args)[PID.target], collection=vars(args)[PCL.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'duplicatenode': parameters = dict(nodesdb=vars(args)[PNO.target],id=vars(args)[PID.target])
+    if service == 'emptytrash': parameters = dict(nodesdb=vars(args)[PNO.target])
+    if service == 'executequery': parameters = dict(nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target], id=vars(args)[PID.target], query=vars(args)[PQY.target], top=vars(args)[PTP.target], variables=json.dumps(dict()))
+    if service == 'export': parameters = dict(nodesdb=vars(args)[PNO.target])
+    if service == 'getcollections': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target])
+    if service == 'getid': parameters = dict(nodesdb=vars(args)[PNO.target], pattern=vars(args)[PPN.target])
+    if service == 'getmember': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target], member=vars(args)[PME.target])
+    if service == 'getmemberlist': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target])
+    if service == 'getmenus': parameters = dict(nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'getnode': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target])
+    if service == 'getobject': parameters = dict(id=vars(args)[PID.target], type=vars(args)[PTY.target], database=vars(args)[PDA.target])
+    if service == 'getpath': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target])
+    if service == 'getsettings': parameters = dict(user=vars(args)[PA.target])
+    if service == 'gettree': parameters = dict(nodesdb=vars(args)[PNO.target],id=vars(args)[PID.target])
+    if service == 'getBchildren': parameters = dict(nodesdb=vars(args)[PNO.target],id=vars(args)[PID.target])
+    if service == 'getwholetree': parameters = dict(nodesdb=vars(args)[PNO.target])
+    if service == 'import': parameters = dict(nodesdb=vars(args)[PNO.target])
+    if service == 'linkfathernode': 
+        parameters = dict(to=vars(args)[PTO.target], nodesdb=vars(args)[PNO.target])
+        parameters['from'] = vars(args)[PFR.target]
+    if service == 'listdatabases': parameters = dict(user=vars(args)[PUS.target] if vars(args)[PUS.target] else 'admin', admin='false' if vars(args)[PUS.target] else 'true')
+    if service == 'listgrants': parameters = dict()
+    if service == 'listobjects': parameters = dict(nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'listnodesdb': parameters = dict(user=vars(args)[PUS.target] if vars(args)[PUS.target] else 'admin')
+    if service == 'listroles': parameters = dict()
+    if service == 'listusers': parameters = dict()
+    if service == 'listsystemdb': parameters = dict()
+    if service == 'movenode': 
+        parameters = dict(to=vars(args)[PTO.target], nodesdb=vars(args)[PNO.target])
+        parameters['from'] = vars(args)[PFR.target]
+    if service == 'renamenode': parameters = dict(nodesdb=vars(args)[PNO.target], id=vars(args)[PID.target], new=vars(args)[PNE.target])
+    if service == 'runchart': parameters = dict(nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target], id=vars(args)[PID.target], toggle='false', colors=vars(args)[PCO.target], top=vars(args)[PTP.target], height=vars(args)[PHE.target], width=vars(args)[PWI.target], plotorientation=vars(args)[PPL.target], template=vars(args)[PTE.target], chart=vars(args)[PCH.target], variables=json.dumps(dict()))
+    if service == 'setobject':
+        parameters = aiohttp.FormData()
+        parameters.add_field('database', vars(args)[PDA.target])
+        parameters.add_field('source', vars(args)[PSO.target])
+        parameters.add_field('encoded', 1)
+    if service == 'unload': parameters = dict(id=vars(args)[PID.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target])
+    if service == 'updatesettings': parameters = dict(user=vars(args)[PA.target], nodesdb=vars(args)[PNO.target], systemdb=vars(args)[PSY.target], template=vars(args)[PTE.target], colors=vars(args)[PCO.target], wallpaper=vars(args)[PWA.target], top=vars(args)[PTP.target], plotorientation=vars(args)[PPL.target], logging=vars(args)[PLG.target])
+    if service == 'uploadnode':
+        parameters = aiohttp.FormData()
+        parameters.add_field('id', vars(args)[PID.target])
+        parameters.add_field('nodesdb', vars(args)[PNO.target])
+        parameters.add_field('systemdb', vars(args)[PSY.target])
+        parameters.add_field('file', open(vars(args)[PFI.target], 'rb'), filename=os.path.basename(vars(args)[PFI.target]), content_type=magic.from_file(vars(args)[PFI.target], mime=True))
+    if service == 'uploadobject':
+        parameters = aiohttp.FormData()
+        parameters.add_field('nodesdb', vars(args)[PNO.target])
+        parameters.add_field('systemdb', 'kairos_system_system')
+        parameters.add_field('file', open(vars(args)[PFI.target], 'rb'), filename=os.path.basename(vars(args)[PFI.target]), content_type=magic.from_file(vars(args)[PFI.target], mime=True))
+
+    return parameters
+
+def get_method(service):
+    post = ['changepassword', 'checkuserpassword', 'uploadnode', 'uploadobject', 'setobject']
+    return 'post' if service in post else 'get'
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--version', action = 'version', version='KAIROS @@VERSION@@')
+parser.add_argument(PA.name, action = 'store', dest=PA.target, default='', help='KAIROS user name to be authentified')
+parser.add_argument(PP.name, action = 'store', dest=PP.target, default='', help='KAIROS user password')
+parser.add_argument(PS.name, action = 'store', dest=PS.target, required=True, help='Service to be executed')
+parser.add_argument(PUS.name, action = 'store', dest=PUS.target, default='', help='User name')
+parser.add_argument(PRO.name, action = 'store', dest=PRO.target, default='', help='Role name')
+parser.add_argument(PPA.name, action = 'store', dest=PPA.target, default='', help='New password to be set')
+parser.add_argument(PNE.name, action = 'store', dest=PNE.target, default='', help='New name')
+parser.add_argument(PNO.name, action = 'store', dest=PNO.target, default='', help='Nodes database')
+parser.add_argument(PSY.name, action = 'store', dest=PSY.target, default='', help='System database')
+parser.add_argument(PTP.name, action = 'store', dest=PTP.target, default='', help='Limit number of row to return')
+parser.add_argument(PCL.name, action = 'store', dest=PCL.target, default='', help='Collection name')
+parser.add_argument(PCO.name, action = 'store', dest=PCO.target, default='', help='Object redifining colors')
+parser.add_argument(PLG.name, action = 'store', dest=PLG.target, default='', help='Kairos logging')
+parser.add_argument(PLO.name, action = 'store', dest=PLO.target, default='', help='Live object')
+parser.add_argument(PTE.name, action = 'store', dest=PTE.target, default='', help='Kairos template to be used')
+parser.add_argument(PCH.name, action = 'store', dest=PCH.target, default='', help='Chart to be used')
+parser.add_argument(PWA.name, action = 'store', dest=PWA.target, default='', help='Kairos wallpaper to be used')
+parser.add_argument(PPL.name, action = 'store', dest=PPL.target, default='', help='Kairos plot orientation')
+parser.add_argument(PID.name, action = 'store', dest=PID.target, default='', help='Object id')
+parser.add_argument(PTY.name, action = 'store', dest=PTY.target, default='', help='Object type')
+parser.add_argument(PDA.name, action = 'store', dest=PDA.target, default='', help='Database where object is stored into')
+parser.add_argument(PSO.name, action = 'store', dest=PSO.target, default='', help='Source to to set')
+parser.add_argument(PME.name, action = 'store', dest=PME.target, default='', help='Member to be used')
+parser.add_argument(PFI.name, action = 'store', dest=PFI.target, default='', help='File to be used')
+parser.add_argument(PEV.name, action = 'store', dest=PEV.target, default='', help='Events received')
+parser.add_argument(PFR.name, action = 'store', dest=PFR.target, default='', help='Node emitting event')
+parser.add_argument(PTO.name, action = 'store', dest=PTO.target, default='', help='Node receiving event')
+parser.add_argument(PPN.name, action = 'store', dest=PPN.target, default='', help='Pattern to find a node id')
+parser.add_argument(PQY.name, action = 'store', dest=PQY.target, default='', help='Query to execute')
+parser.add_argument(PWI.name, action = 'store', dest=PWI.target, default='', help='Chart width')
+parser.add_argument(PHE.name, action = 'store', dest=PHE.target, default='', help='Chart height')
+parser.add_argument(PSE.name, action = 'store', dest=PSE.target, default='', help='Aggregator selector')
+parser.add_argument(PTK.name, action = 'store', dest=PTK.target, default='', help='Aggregator take')
+parser.add_argument(PTF.name, action = 'store', dest=PTF.target, default='', help='Aggregator time filter')
+parser.add_argument(PSK.name, action = 'store', dest=PSK.target, default='', help='Aggregator skip')
+parser.add_argument(PST.name, action = 'store', dest=PST.target, default='', help='Aggregator sort')
+parser.add_argument(PMT.name, action = 'store', dest=PMT.target, default='', help='Aggregator method')
+
+args = parser.parse_args()
+
+parameters = get_parameters(parser, args, args.service)
+method = get_method(args.service)
+params = list(parameters.items()) if method == 'get' else parameters
+
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+loop.run_until_complete(main(loop, method, 'https://localhost/' + args.service, params))
+
+if 'success' not in result:
+    message = json.dumps(sortjson(result), indent=4, sort_keys=True)
+    print(message)
+    exit(0)
+else:
+    if not result['success']:
+        message = json.dumps(sortjson(result), indent=4, sort_keys=True)
+        logger.error(message)
+        print(message)
+        exit(1)
+    else:
+        message = json.dumps(sortjson(result), indent=4, sort_keys=True)
+        print(message)
+        exit(0)
+
+
