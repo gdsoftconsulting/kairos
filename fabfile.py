@@ -150,7 +150,7 @@ def deliver(c):
 def commit(c):
     c.run(f"git status")
     c.run(f"git commit -m 'Kairos version: {VERSION}'")    
-    c.run(f"git push")
+    c.run(f"git push --set-upstream origin main")
 
 @task
 def gitreset(c):
