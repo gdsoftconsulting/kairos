@@ -3,8 +3,8 @@ from fabric import task
 from fabric import Connection
 from loguru import logger
 
-VERSION='9.5'
-PORTKAIROS = 44395
+VERSION='9.6'
+PORTKAIROS = 44396
 PORTSTREAMLIT = 8510
 IMAGE = f'gdsc/kairos:{VERSION}'
 MACHINE = f'kairos{VERSION}'
@@ -47,7 +47,7 @@ def start(c):
 
 @task
 def stop(c): 
-    remotecmd(f'docker exec {MACHINE} su - postgres -c "pg_ctl stop"')
+    remotecmd(f'docker exec {MACHINE} su - postgres -c "pg_ctl stop -m fast"')
     remotecmd(f'docker stop {MACHINE}')
 
 @task
@@ -151,17 +151,6 @@ def commit(c):
     c.run(f"git status")
     c.run(f"git commit -m 'Kairos version: {VERSION}'")    
     c.run(f"git push")
-
-
-# nonreg:
-# 	cd ../KAIROSTESTS && python -m venv kairostests && source kairostests/bin/activate && python -m pip install --upgrade pip
-# 	cd ../KAIROSTESTS && python -m venv kairostests && source kairostests/bin/activate && python -m pip install pytest
-# 	cd ../KAIROSTESTS && python -m venv kairostests && source kairostests/bin/activate && python -m pip install jq
-# 	cd ../KAIROSTESTS && python -m venv kairostests && source kairostests/bin/activate && pytest --capture=fd -v startup.py
-# 	cd ../KAIROSTESTS && python -m venv kairostests && source kairostests/bin/activate && pytest --capture=fd -v test.py
-
-# remove:
-# 	curl "https://hub.docker.com/v2/repositories/gdsc/kairos/tags/$(VERSION)/" -X DELETE -H "Authorization: JWT ${TOKEN}"
 
 @task
 def gitreset(c):

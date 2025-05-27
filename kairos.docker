@@ -67,7 +67,7 @@ RUN python -m pip install python-magic
 RUN python -m pip install asyncinotify
 RUN python -m pip install psycopg2-binary
 RUN python -m pip install sqlalchemy
-RUN python -m pip install plotly
+RUN python -m pip install plotly==5.24.1
 RUN python -m pip install pandas
 RUN python -m pip install aiohttp
 RUN python -m pip install yarl
@@ -84,6 +84,7 @@ RUN python -m pip install lxml
 RUN python -m pip install cx_Oracle
 RUN python -m pip install loguru
 RUN python -m pip install fabric
+RUN python -m pip install pexpect
 RUN python -m pip install pscript
 RUN python -m pip install textwrap3
 RUN python -m pip install htmlgenerator
