@@ -24,6 +24,7 @@ def set_logging_level(p):
     logger.remove()
     lvl = dlog[p]
     lf = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <red>{process}</red> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | - <level>{message}</level>")
+    lf = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <red>{process: >6}</red> | <level>{level: <8}</level> | <level>{message}</level>")
     logger.add('/var/log/kairos/kairos.log', format=lf, level=lvl, rotation="10 MB", retention="30 days", compression="zip")
     logger.info(f'Logging has been set to {p}')
 
@@ -67,6 +68,8 @@ if args.launcher:
     gunicorn.extend(['-t0'])
     gunicorn.extend(['-p', '/var/log/gunicorn.pid'])
     gunicorn.extend(['-w', str(workers)])
+    # gunicorn.extend(['--max-requests', '10'])
+    # gunicorn.extend(['--max-requests-jitter', '5'])
     gunicorn.extend(['--keyfile', '/certificates/kairos.key'])
     gunicorn.extend(['--certfile', '/certificates/kairos.crt'])
     gunicorn.extend(['--access-logfile', '/var/log/kairos/webserver.log'])

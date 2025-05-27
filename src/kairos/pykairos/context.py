@@ -26,7 +26,7 @@ from loguru import logger
 from dask import bag as daskbag
 from pykairos.analyzer import Analyzer
 from pykairos.arcfile import Arcfile
-from pykairos.parallel import Parallel
+from pykairos.parallel import *
 from pykairos.repository import Repository
 from fabric import Connection as Runner
 
@@ -1266,12 +1266,17 @@ class Context:
                 with suppress(Exception): shutil.rmtree(f'/export/{db}')
                 run.local(f'mkdir -p /export/{db}')
                 run.local(f'chmod 777 /export/{db}')
-                command = f'su - postgres "pg_dump -Fd -vv -j {multiprocessing.cpu_count()} -f /export/{db}/database.dump {db}"'
+                command = f'su - postgres -c "pg_dump -Fd -vv -j {multiprocessing.cpu_count()} -f /export/{db}/database.dump {db}"'
+                logger.info(command)
                 result = run.local(command, hide=False)
-                logger.info(f'Exporting {db}: {result.stdout}')
+                if result.failed:
+                    self.status.pusherrmessage(f"Export of database {db} failed!")
+                    logger.error(f'Result for {db}: {result.stderr}')
+                else:
+                    logger.info(f'Result for {db}: {result.stderr}')
             except Exception as e:
-                logger.error(f"Export database {db} failed: {e}")
-                self.status.pusherrmessage(f"Export database {db} failed with error: {str(e)}")
+                logger.error(f"Error processing database {db}: {str(e)}")
+                self.status.pusherrmessage(f"Error processing database {db}: {str(e)}")
 
     def importdatabases(self, nodesdb):
         r = self.grepo
@@ -1285,16 +1290,18 @@ class Context:
                 r.execute(f"UPDATE pg_database SET datallowconn = 'false' WHERE datname = '{db}'")
                 r.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}'")
                 logger.info(f"Dropping database: {db}")
-                run.local(f"su - postgres \"psql -c 'DROP DATABASE IF EXISTS {db}'\"", hide=False)
+                run.local(f"su - postgres -c \"psql -c 'DROP DATABASE IF EXISTS {db}'\"", hide=False)
                 logger.info(f"Creating database: {db}")
-                run.local(f"su - postgres \"psql -c 'CREATE DATABASE {db}'\"", hide=False)
+                run.local(f"su - postgres -c \"psql -c 'CREATE DATABASE {db}'\"", hide=False)
                 logger.info(f"Restoring database: {db}")
-                command = f'su - postgres "pg_restore -vv -j {multiprocessing.cpu_count()} -d {db} /export/{db}/database.dump"'  
+                command = f'su - postgres -c "pg_restore -vv -j {multiprocessing.cpu_count()} -d {db} /export/{db}/database.dump"'
+                logger.info(command)
                 result = run.local(f"{command}", hide=False)
                 if result.failed:
                     self.status.pusherrmessage(f"Import of database {db} failed!")
+                    logger.error(f'Result for {db}: {result.stderr}')
                 else:
-                    logger.info(f"Database {db} imported successfully.")
+                    logger.info(f'Result for {db}: {result.stderr}')
                     r.execute(f"UPDATE pg_database SET datallowconn = 'true' WHERE datname = '{db}'")
                     logger.info(f"Connections are now possibles on imported database {db}.")
             except Exception as e:
@@ -1307,8 +1314,14 @@ class Context:
         for nid in getprogeny(r, id): self.deletecache(nid)
 
     def buildprogenycaches(self, id):
+        run = Runner("localhost")
         r = self.nrepo
-        for nid in getprogeny(r, id): self.buildcollectioncache(nid , {'*'})
+        for nid in getprogeny(r, id):
+            command = f'kairos -s buildallcollectioncaches  --nodesdb {self.nodesdb} --systemdb {self.systemdb} --id {nid}'
+            logger.info(command)
+            result = run.local(f"{command}", hide=True)
+            if result.failed: self.status.pusherrmessage(f"Build cache failed for node id: {nid}")
+            else: logger.info(f"Cache built successfully for node id: {nid}")
 
     def getBchildren(self, id):
         r = self.nrepo
@@ -1710,7 +1723,7 @@ class Context:
                 queues[collection].put('KAIROS_DONE')
                 pr.join()
                 if not queues['ERROR_QUEUE'].empty():
-                    self.status.pusherrmessage('At least one error found during collection cache building! See KAIROS.LOG for more information!')
+                    self.status.pusherrmessage('At least one error found during collection cache bu@ilding! See KAIROS.LOG for more information!')
                 else:
                     if collection not in node['datasource']['cache']['collections']: node['datasource']['cache']['collections'][collection] = dict()
                     node['datasource']['cache']['collections'][collection][part] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
@@ -1726,6 +1739,7 @@ class Context:
             self.getcache(node)
 
         except: self.status.pusherrmessage(str(sys.exc_info()[1]))
+        del queues
 
     def createpartB(self, nid, part, collections):
         if collections == None: collections = self.createcollections
@@ -1828,6 +1842,24 @@ class Context:
             if member in members:
                 analyzer = Analyzer(members[member], set(collections), listen, nid)
                 logger.info(f'Analyzing member: {member}...')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 status = analyzer.analyze(thezip.read(member), member)
                 if status.error: queues['ERROR_QUEUE'].put(member)
                 return None
@@ -1861,6 +1893,7 @@ class Context:
             self.getcache(node)
 
         except: self.status.pusherrmessage(str(sys.exc_info()[1]))
+        del queues
 
     def createpartD(self, nid, part, collections):
         if collections == None: collections = self.createcollections

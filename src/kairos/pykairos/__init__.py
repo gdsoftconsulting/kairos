@@ -13,7 +13,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with Kairos.  If not, see <http://www.gnu.org/licenses/>.
 #
-import cgi, json, base64, os, subprocess, sys, zipfile, magic, multidict, psycopg2
+import cgi, json, base64, os, subprocess, sys, zipfile, magic, multidict, psycopg2, asyncio, signal
 from datetime import datetime
 from time import time
 from urllib.parse import parse_qs
@@ -61,7 +61,7 @@ def set_logging_level(p):
     dlog = dict(Trace=5, Debug=10, Info=20, Success=25, Warning=30, Error=40, Critical=50)
     logger.remove()
     lvl = dlog[p]
-    lf = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <red>{process}</red> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | - <level>{message}</level>")
+    lf = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <red>{process: >6}</red> | <level>{level: <8}</level> | <level>{message}</level>")
     logger.add('/var/log/kairos/kairos.log', format=lf, level=lvl,  rotation="10 MB", retention="30 days", compression="zip")
     logger.info(f'Logging has been set to {p}')
 
@@ -82,6 +82,7 @@ def intercept_logging_and_internal_error(func):
         except:
             tb = sys.exc_info()
             logger.error(str(tb))
+            logger.error(f'Exception raised in: {func.__name__} with parameters: {args} and {kwargs}')
             message = str(tb[1])
             return web.json_response(dict(success=False, message=message))
     return wrapper
@@ -94,18 +95,22 @@ def intercept_internal_error(func):
         except:
             tb = sys.exc_info()
             logger.error(str(tb))
+            logger.error(f'Exception raised in: {func.__name__} with parameters: {args} and {kwargs}')
             message = str(tb[1])
             return web.json_response(dict(success=False, message=message))
     return wrapper
     
 class KairosWorker:
-    def __init__(self, jpypeflag=True):
+    def __init__(self, jpypeflag=True, max_requests=1000):
+        self.request_count = 0
+        self.max_requests = max_requests
         
-        app = web.Application(client_max_size=1024**3)
+        app = web.Application(client_max_size=1024**3, middlewares=[self.count_requests])
         app['websockets'] = []
 
         @trace_call
         def on_shutdown(app):
+            logger.info('Shutdown invoked!')
             for ws in app['websockets']:
                 ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
@@ -201,6 +206,23 @@ class KairosWorker:
         setproctitle.setproctitle('KairosWorker')
         logger.info(f'Process name: {setproctitle.getproctitle()}')
         logger.info(f'Process id: {os.getpid()}')
+
+    @web.middleware
+    async def count_requests(self, request, handler):
+        self.request_count += 1
+        logger.info(f"Request: {request.method} {request.path} {request.query_string}")
+        response = await handler(request)
+        if self.request_count >= self.max_requests:
+            logger.warning(f"[Worker] Max requests reached ({self.request_count})")
+            asyncio.create_task(self.suicide())
+        return response
+
+    async def suicide(self):
+        await asyncio.sleep(1)
+        logger.warning("Suicide")
+        os.kill(os.getpid(), signal.SIGTERM)
+        logger.warning("Kill initiated")
+        sys.exit(0)
 
     @trace_call
     async def websocket_handler(self, request):

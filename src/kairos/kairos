@@ -321,5 +321,3 @@ else:
         message = json.dumps(sortjson(result), indent=4, sort_keys=True)
         print(message)
         exit(0)
-
-
