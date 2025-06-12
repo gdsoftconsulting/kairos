@@ -57,5 +57,5 @@ if len(moa) > 0:
             st.session_state.object = curobj['id']
             st.session_state.type = curobj['type']
             del st.session_state.objects
-            st.session_state.callstack.call('kairosedit', 'kairosobjects')
+            st.session_state.callstack.call('pages/kairosedit.py', 'pages/kairosobjects.py')
 

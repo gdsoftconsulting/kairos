@@ -4,7 +4,7 @@ from pages.functions.definitions import *
 set_page_config()
 gen_back_button()
 
-mediad="/home/app/app/pages/media"
+mediad="/home/app/pages/media"
 
 def subheadercontents(text, contents, anchor=None, divider=None):
     st.subheader(text, divider=divider, anchor=anchor)

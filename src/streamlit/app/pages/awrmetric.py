@@ -1,9 +1,8 @@
 import streamlit as st, numpy as np, pandas as pd
 from pages.functions.definitions import *
-from streamlit_extras.switch_page_button import switch_page
 
-st.set_page_config(layout="wide",initial_sidebar_state='collapsed')
-st.markdown("""<style> [data-testid="collapsedControl"] {display: none}</style>""", unsafe_allow_html=True)
+theme = set_page_config()
+gen_back_button()
 
 if "context" in st.session_state and "run" in st.session_state.context and st.session_state.context["run"]:
      url = st.session_state.context['url']
@@ -15,9 +14,6 @@ if "context" in st.session_state and "run" in st.session_state.context and st.se
      grouping = st.session_state.context['grouping']
      top = st.session_state.context['top']
      st.header("", anchor="home")
-     c1, c2 = st.columns([10,1])
-     with c2:
-          if st.button('Back'): switch_page("awrrepmain")
      logger.info('Generating the AWRMETRIC page ...')
      logger.info(f'AWRMETRIC parameters: {st.session_state.context}')
      tcontents = st.expander(f"Table of contents")

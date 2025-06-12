@@ -102,21 +102,21 @@ if url:
         #st.session_state.context = dict(url=url, cdb=cdb, mindate=mindate, maxdate=maxdate, flags=flags, sampling=sampling, samplingv=samplingv, top=top, grouping=grouping, oracle=oracle, run=True)
         st.session_state.context = dict(url=url, cdb=cdb, mindate=mindate, maxdate=maxdate, flags=flags, top=top, grouping=grouping, oracle=oracle, run=True)
         errorashvdollar = 'Taking ash value from V$ is only possible when selected database is the current database!'
-        if genawrrep: switch_page('awrreport')
+        if genawrrep: st.session_state.callstack.call('pages/awrreport.py', 'pages/awrrepmain.py')
         if genashrep:
             if flags['ashvdollar'] and int(dbid) != oracle.getconndbid(): st.error(errorashvdollar)
-            else: switch_page('ashreport')
+            else: st.session_state.callstack.call('pages/ashreport.py', 'pages/awrrepmain.py')
         if chses:
             if flags['ashvdollar'] and int(dbid) != oracle.getconndbid(): st.error(errorashvdollar)
-            else: switch_page('awrsession')
+            else: st.session_state.callstack.call('pages/awrsession.py', 'pages/awrrepmain.py')
         if chev:
             if flags['ashvdollar'] and int(dbid) != oracle.getconndbid(): st.error(errorashvdollar)
-            else: switch_page('awrevent')
+            else: st.session_state.callstack.call('pages/awrevent.py', 'pages/awrrepmain.py')
         if chreq:
             if flags['ashvdollar'] and int(dbid) != oracle.getconndbid(): st.error(errorashvdollar)
-            else: switch_page('awrrequest')
+            else: st.session_state.callstack.call('pages/awrrequest.py', 'pages/awrrepmain.py')
         if chsta:
             if flags['ashvdollar'] and int(dbid) != oracle.getconndbid(): st.error(errorashvdollar)
-            else: switch_page('awrstatistic')
-        if chmet: switch_page('awrmetric')
-        if custreq: switch_page('awrcustreq')
+            else: st.session_state.callstack.call('pages/awrstatistic.py', 'pages/awrrepmain.py')
+        if chmet: st.session_state.callstack.call('pages/awrmetric.py', 'pages/awrrepmain.py')
+        if custreq: st.session_state.callstack.call('pages/awrcustreq.py', 'pages/awrrepmain.py')

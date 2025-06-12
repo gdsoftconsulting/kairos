@@ -101,8 +101,8 @@ def intercept_internal_error(func):
     return wrapper
     
 class KairosWorker:
-    def __init__(self, jpypeflag=True, max_requests=1000):
-        self.request_count = 0
+    def __init__(self, jpypeflag=True, max_requests=100):
+        self.countservices = 0
         self.max_requests = max_requests
         
         app = web.Application(client_max_size=1024**3, middlewares=[self.count_requests])
@@ -209,11 +209,11 @@ class KairosWorker:
 
     @web.middleware
     async def count_requests(self, request, handler):
-        self.request_count += 1
+        self.countservices += 1
         logger.info(f"Request: {request.method} {request.path} {request.query_string}")
         response = await handler(request)
-        if self.request_count >= self.max_requests:
-            logger.warning(f"[Worker] Max requests reached ({self.request_count})")
+        if self.countservices >= self.max_requests:
+            logger.warning(f"[Worker] Max requests reached ({self.countservices})")
             asyncio.create_task(self.suicide())
         return response
 
@@ -263,9 +263,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         pattern = params['pattern'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         result = context.expand(pattern, 'desc', 1, 0)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=result))
                 
     @intercept_logging_and_internal_error
@@ -274,26 +274,26 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         result = context.getpath(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=result))
 
     @intercept_logging_and_internal_error
     @trace_call
     def checkserverconfig(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         context.createsystem()
         context.createuser('admin', skiperror=True)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
     @trace_call
     def createsystem(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         context.createsystem()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -329,7 +329,7 @@ class KairosWorker:
         if encoded:
             decode = lambda x: base64.b64decode(x).decode()
             source = decode(source)
-        context = Context(nodesdb=database)
+        context = Context(nb=self.countservices, nodesdb=database)
         try:
             (id, typeobj) = context.writeobject(source)
             msg = dict(data=dict(msg=f'Object: {id} of type: {typeobj} has been successfully saved!', id=id))
@@ -337,7 +337,7 @@ class KairosWorker:
             tb = sys.exc_info()
             logger.error(tb)
             context.status.pusherrmessage(str(tb[1]))
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, msg)
 
 
@@ -346,9 +346,9 @@ class KairosWorker:
     def getsettings(self, request):
         params = parse_qs(request.query_string)
         user = params['user'][0]
-        context = Context(nodesdb=f'kairos_user_{user}')
+        context = Context(nb=self.countservices, nodesdb=f'kairos_user_{user}')
         settings = context.getsettings()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(settings=settings)))
 
     @intercept_logging_and_internal_error
@@ -357,17 +357,17 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         user = params['user'][0]
         adminrights = True if params['admin'][0] == "true" else False
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listdatabases(user, adminrights)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
     @trace_call
     def listsystemdb(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listsystemdb()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -375,9 +375,9 @@ class KairosWorker:
     def listnodesdb(self, request):
         params = parse_qs(request.query_string)
         user = params['user'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listnodesdb(user)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -386,10 +386,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]
-        try: context = Context(nodesdb=nodesdb, systemdb=systemdb)
-        except: context = Context(systemdb=systemdb)
+        try: context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
+        except: context = Context(nb=self.countservices, systemdb=systemdb)
         data = context.listobjects("where type='template'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -398,9 +398,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         data = context.listobjects("where type='aggregator'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -409,9 +409,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         #systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         data = context.listobjects("where type='liveobject'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -420,10 +420,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]      
-        try: context = Context(nodesdb=nodesdb, systemdb=systemdb)
-        except: context = Context(systemdb=systemdb)
+        try: context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
+        except: context = Context(nb=self.countservices, systemdb=systemdb)
         data = context.listobjects("where type='wallpaper'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -432,10 +432,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]
-        try: context = Context(nodesdb=nodesdb, systemdb=systemdb)
-        except: context = Context(systemdb=systemdb)
+        try: context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
+        except: context = Context(nb=self.countservices, systemdb=systemdb)
         data = context.listobjects("where type='color'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -444,9 +444,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         systemdb = params['systemdb'][0]
         nodesdb = params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         data = context.listobjects("")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -456,9 +456,9 @@ class KairosWorker:
         database = params['database'][0]
         objtype = params['type'][0]
         objid = params['id'][0]
-        context = Context(nodesdb=database)
+        context = Context(nb=self.countservices, nodesdb=database)
         (_, source) = context.getobjectstream(objid, objtype)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=source.decode()))
 
     @intercept_logging_and_internal_error
@@ -475,9 +475,9 @@ class KairosWorker:
         plotorientation = params['plotorientation'][0]
         logging = params['logging'][0]
         newsettings = dict(nodesdb=nodesdb, systemdb=systemdb, colors=colors, template=template, wallpaper=wallpaper, plotorientation=plotorientation, logging=logging, top=top)
-        context = Context(nodesdb=f'kairos_user_{user}')
+        context = Context(nb=self.countservices, nodesdb=f'kairos_user_{user}')
         context.updatesettings(newsettings)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -490,9 +490,9 @@ class KairosWorker:
                 return web.json_response(dict(success=True, maxFileSize=2147483648))
         multipart = await request.post()
         nodesdb = multipart['nodesdb'] if 'nodesdb' in multipart else params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         (id, filename, typeobj) = context.uploadobject(multipart)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(state=True, name=filename, id=id, type=typeobj))
 
     @intercept_logging_and_internal_error
@@ -507,33 +507,33 @@ class KairosWorker:
         nodesdb = multipart['nodesdb'] if 'nodesdb' in multipart else params['nodesdb'][0]
         systemdb = multipart['systemdb'] if 'systemdb' in multipart else params['systemdb'][0]
         id = multipart['id'] if 'id' in multipart else params['id'][0] if 'id' in params else None
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         filename = context.uploadnode(id, multipart)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(state=True, name=filename))
 
     @intercept_logging_and_internal_error
     @trace_call
     def listroles(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listroles()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
     @trace_call
     def listusers(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listusers()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
     @trace_call
     def listgrants(self, request):
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         data = context.listgrants()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -541,9 +541,9 @@ class KairosWorker:
     def createrole(self, request):
         params = parse_qs(request.query_string)
         role = params['role'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.createrole(role)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -551,9 +551,9 @@ class KairosWorker:
     def createuser(self, request):
         params = parse_qs(request.query_string)
         user = params['user'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.createuser(user)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -562,9 +562,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         user = params['user'][0]
         role = params['role'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.creategrant(user, role)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -572,9 +572,9 @@ class KairosWorker:
     def deleterole(self, request):
         params = parse_qs(request.query_string)
         role = params['role'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.deleterole(role)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -582,9 +582,9 @@ class KairosWorker:
     def deleteuser(self, request):
         params = parse_qs(request.query_string)
         user = params['user'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.deleteuser(user)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -592,9 +592,9 @@ class KairosWorker:
     def resetpassword(self, request):
         params = parse_qs(request.query_string)
         user = params['user'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.resetpassword(user)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -603,9 +603,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         user = params['user'][0]
         role = params['role'][0]
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         response = context.deletegrant(user, role)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, response)
 
     @intercept_logging_and_internal_error
@@ -624,9 +624,9 @@ class KairosWorker:
             message = "Invalid password!"
             logger.warning(message)
             return web.json_response(dict(success=False, message=message))
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         context.changepassword(user, new)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg='Password has been successfully updated!')))
 
     @intercept_logging_and_internal_error
@@ -639,9 +639,9 @@ class KairosWorker:
             return web.json_response(dict(success=False, status='error', message=message))
         id = params['id'][0]
         typeobj = params['type'][0]
-        context = Context(nodesdb=database)
+        context = Context(nb=self.countservices, nodesdb=database)
         context.deleteobject(id, typeobj)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg=f'{id} {typeobj} object has been successfully removed!')))
 
     @intercept_logging_and_internal_error
@@ -651,9 +651,9 @@ class KairosWorker:
         database = params['database'][0]
         id = params['id'][0]
         typeobj = params['type'][0]
-        context = Context(nodesdb=database)
+        context = Context(nb=self.countservices, nodesdb=database)
         (filename, stream) = context.getobjectstream(id, typeobj)
-        context.free()
+        self.countservices = context.free()
         return web.Response(headers=multidict.MultiDict({'Content-Disposition': 'Attachment;filename="' + filename + '"'}), body=stream)
 
     @intercept_logging_and_internal_error
@@ -662,9 +662,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         (filename, stream) = context.downloadsource(id)
-        context.free()
+        self.countservices = context.free()
         return web.Response(headers=multidict.MultiDict({'Content-Disposition': 'Attachment;filename="' + filename + '"'}), body=stream)
 
     @intercept_logging_and_internal_error
@@ -673,9 +673,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         data = context.getBchildren(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -684,10 +684,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.getnode(id)
         context.getsource(node, getstream=True)
-        context.free()
+        self.countservices = context.free()
         thezip = zipfile.ZipFile(BytesIO(node['datasource']['stream']))
         data = [dict(label=x) for x in thezip.namelist()]
         return getresponse(context, dict(data=data))
@@ -699,9 +699,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         data = context.getcollections(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -711,10 +711,10 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         member = params['member'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.getnode(id)
         context.getsource(node, getstream=True)
-        context.free()
+        self.countservices = context.free()
         thezip = zipfile.ZipFile(BytesIO(node['datasource']['stream']))
         stream = thezip.read(member)
         type = magic.from_buffer(stream)
@@ -730,9 +730,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         data = context.getmenus()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=data))
 
     @intercept_logging_and_internal_error
@@ -741,9 +741,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         parent = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         result = context.gettree(parent)
-        context.free
+        self.countservices = context.free()
         return web.json_response(result)
 
     @intercept_logging_and_internal_error
@@ -751,9 +751,9 @@ class KairosWorker:
     def getwholetree(self, request):
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         result = context.getwholetree()
-        context.free
+        self.countservices = context.free()
         return getresponse(context, dict(data=result))
 
     @intercept_logging_and_internal_error
@@ -762,11 +762,11 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.getnode(id)
         context.getsource(node)
         context.getcache(node)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -775,10 +775,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         child = context.createnode(id)
         node = context.getnode(child)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -788,9 +788,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
         new = params['new'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.renamenode(id, new)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -799,10 +799,10 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         dup = context.duplicatenode(id)
         node = context.getnode(dup)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -811,9 +811,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         context.deletenode(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -821,9 +821,9 @@ class KairosWorker:
     def emptytrash(self, request):
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         context.emptytrash()
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -833,9 +833,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         pfrom = params['from'][0]
         pto = params['to'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.movenode(pfrom, pto)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -846,10 +846,10 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         chart = params['chart'][0]
         variables = json.loads(params['variables'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.variables = variables.copy()
         chart = context.getchart(chart)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=chart))
 
     @intercept_logging_and_internal_error
@@ -859,9 +859,9 @@ class KairosWorker:
         database = params['database'][0]
         id = params['id'][0]
         type = params['type'][0]
-        context = Context(nodesdb=database, systemdb=database)
+        context = Context(nb=self.countservices, nodesdb=database, systemdb=database)
         obj = context.readobjects(f"where id = '{id}' and type = '{type}'", evalobject=False)[0]
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=obj))
     
     @intercept_logging_and_internal_error
@@ -872,10 +872,10 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         layout = params['layout'][0]
         variables = json.loads(params['variables'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.variables = variables.copy()
         layout = context.getlayout(layout)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=layout))
     
     @intercept_logging_and_internal_error
@@ -886,10 +886,10 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         choice = params['choice'][0]
         variables = json.loads(params['variables'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.variables = variables.copy()
         choice = context.getchoice(choice)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=choice))
 
     @intercept_logging_and_internal_error
@@ -899,9 +899,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         template = params['template'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         template = context.gettemplate(template)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=template))
 
     @intercept_logging_and_internal_error
@@ -911,9 +911,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         colors = params['colors'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         colors = context.getcolors(colors)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=colors))
 
     @intercept_logging_and_internal_error
@@ -922,9 +922,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         queries = context.listobjects("where type='query'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=queries))
 
     @intercept_logging_and_internal_error
@@ -933,9 +933,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         charts = context.listobjects("where type='chart'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=charts))
 
     @intercept_logging_and_internal_error
@@ -944,9 +944,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         choices = context.listobjects("where type='choice'")
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=choices))
 
     @intercept_logging_and_internal_error
@@ -959,10 +959,10 @@ class KairosWorker:
         query = params['query'][0]
         limit = int(params['top'][0])
         variables = json.loads(params['variables'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.variables = variables.copy()
         result = context.executequery(id, query, limit)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=result))
 
     @intercept_logging_and_internal_error
@@ -973,9 +973,9 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         id = params['id'][0]
         collection = params['collection'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         result = context.displaycollection(id, collection)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=result))
 
     @intercept_logging_and_internal_error
@@ -986,9 +986,9 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         collection = params['collection'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.buildcollectioncache(id, {collection})
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -998,10 +998,10 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         _ = context.getnode(id)
         context.buildcollectioncache(id, {'*'})
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -1010,9 +1010,9 @@ class KairosWorker:
         params = parse_qs(request.query_string)
         nodesdb = params['nodesdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         context.deletecache(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -1022,9 +1022,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         id = params['id'][0] 
         collection = params['collection'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         context.dropcollectioncache(id, [collection])
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict())
 
     @intercept_logging_and_internal_error
@@ -1034,9 +1034,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         fromid = int(params['from'][0])
         toid = int(params['to'][0])
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         tnode = context.compareaddnode(fromid, toid)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=tnode))
     
     @intercept_logging_and_internal_error
@@ -1046,9 +1046,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         fromid = int(params['from'][0])
         toid = int(params['to'][0])
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         tnode = context.aggregateaddnode(fromid, toid)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=tnode))
     
     @intercept_logging_and_internal_error
@@ -1063,9 +1063,9 @@ class KairosWorker:
         aggregatortimefilter = params['aggregatortimefilter'][0]
         aggregatorsort = params['aggregatorsort'][0]
         aggregatormethod = params['aggregatormethod'][0]
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         node = context.applyaggregator(id, aggregatorselector, aggregatortake, aggregatorskip, aggregatortimefilter, aggregatorsort, aggregatormethod)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
      
     @intercept_logging_and_internal_error
@@ -1075,9 +1075,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         (filename, stream) = context.unload(id)
-        context.free()
+        self.countservices = context.free()
         return web.Response(headers=multidict.MultiDict({'Content-Disposition': 'Attachment;filename="' + filename + '"'}), body=stream)
     
     @intercept_logging_and_internal_error
@@ -1087,9 +1087,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         fromid = int(params['from'][0])
         toid = int(params['to'][0])
-        context = Context(nodesdb=nodesdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb)
         tnode = context.linkfathernode(fromid, toid)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=tnode))
 
     @intercept_logging_and_internal_error
@@ -1100,9 +1100,9 @@ class KairosWorker:
         systemdb = params['systemdb'][0]
         loname = params['liveobject'][0]
         id = int(params['id'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         node= context.applyliveobject(id, loname)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=node))
 
     @intercept_logging_and_internal_error
@@ -1110,9 +1110,9 @@ class KairosWorker:
     def exportdatabase(self, request):
         params = parse_qs(request.query_string)
         nodesdb = [params['nodesdb'][0]] if 'nodesdb' in params else []
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         context.exportdatabases(nodesdb)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg=f"Database(s): {nodesdb} has(ve) been exported sucessfully!")))
 
     @intercept_logging_and_internal_error
@@ -1120,9 +1120,9 @@ class KairosWorker:
     def importdatabase(self, request):
         params = parse_qs(request.query_string)
         nodesdb = [params['nodesdb'][0]] if 'nodesdb' in params else []
-        context = Context(postgres=True)
+        context = Context(nb=self.countservices, postgres=True)
         context.importdatabases(nodesdb)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg=f"Database(s): {nodesdb} has(ve) been imported sucessfully!")))
 
     @trace_call
@@ -1131,9 +1131,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.clearprogenycaches(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg="Caches have been cleared sucessfully!")))
 
     @trace_call
@@ -1142,9 +1142,9 @@ class KairosWorker:
         nodesdb = params['nodesdb'][0]
         systemdb = params['systemdb'][0]
         id = params['id'][0]
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.buildprogenycaches(id)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(msg="Caches have been built sucessfully!")))
 
     @intercept_logging_and_internal_error
@@ -1163,8 +1163,8 @@ class KairosWorker:
         template = params['template'][0]
         toggle = True if params['toggle'][0] == 'true' else False
         variables = json.loads(params['variables'][0])
-        context = Context(nodesdb=nodesdb, systemdb=systemdb)
+        context = Context(nb=self.countservices, nodesdb=nodesdb, systemdb=systemdb)
         context.variables = variables.copy()
         chartobj = context.runchart(id, chart, width, height, limit, colors, plotorientation, template, toggle)
-        context.free()
+        self.countservices = context.free()
         return getresponse(context, dict(data=dict(chart=chartobj)))

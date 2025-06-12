@@ -40,6 +40,7 @@ getdefaultnodename = lambda repository: [row['name'] for row in repository.execu
 getnodeparentid = lambda repository, id: [row['pid'] for row in repository.execute(f"select parent as pid from nodes where id = {id}")][0]
 getrootid = lambda repository: [row['rid'] for row in repository.execute("select id as rid from nodes where parent is null")][0]
 getprogeny = lambda repository, id:  [row['rid'] for row in repository.execute(f"with recursive tree as (select id, parent from nodes where id={id} union all select p.id, p.parent from nodes p join tree c on p.parent = c.id) select id as rid from tree where id != {id}")]
+getprogeny = lambda repository, id:  [row['rid'] for row in repository.execute(f"with recursive tree as (select id, parent, 0 as depth from nodes where id={id} union all select p.id, p.parent, t.depth + 1 from nodes p join tree t on p.parent = t.id) select id as rid from tree where id != {id} order by depth desc")]
 getancestors = lambda repository, id:  [x for x in reversed([row['rid'] for row in repository.execute(f"with recursive tree as (select id, parent from nodes where id={id} union all select p.id, p.parent from nodes p join tree c on p.id = c.parent) select id as rid from tree where id != {id}")])]
 fff1 = lambda repository, id, name: [row['rid'] for row in repository.execute(f"select id as rid from nodes where parent = {id} and name = '{name}'")]
 getnodesidfromp = lambda repository, id: [row['rid'] for row in repository.execute(f"select id as rid from nodes where parent = {id}")]
@@ -287,7 +288,8 @@ class Status:
 
 class Context:
     
-    def __init__(self, nodesdb=None, systemdb=None, postgres=False, autocommit=True):
+    def __init__(self, nb=0, nodesdb=None, systemdb=None, postgres=False, autocommit=True):
+        self.count = nb
         self.nodesdb = nodesdb
         self.systemdb = systemdb
         self.postgresdb = postgres
@@ -307,6 +309,7 @@ class Context:
         if self.systemdb: self.srepo.disconnect()
         if self.status.errors > 0:
             for m in self.status.errormessages: logger.error(m)
+        return self.count
 
     def setschema(self, schema=None):
         self.nrepo.setschema(schema)
@@ -336,7 +339,7 @@ class Context:
         self.nodesdb = curdatabase
         self.nrepo = Repository(self.nodesdb)
         r = self.nrepo
-        r.execute("create language plpython3u")
+        r.execute("create extension plpython3u")
         r.execute("create extension oracle_fdw")
         r.execute("create extension postgres_fdw")
         r.execute("create sequence objid start 1")
@@ -367,7 +370,7 @@ class Context:
         self.nodesdb = curdatabase
         self.nrepo = Repository(self.nodesdb)
         r = self.nrepo
-        r.execute("create language plpython3u")
+        r.execute("create extension plpython3u")
         r.execute("create extension oracle_fdw")
         r.execute("create extension postgres_fdw")
         r.execute("create sequence objid start 1")
@@ -1254,7 +1257,7 @@ class Context:
         if self.status.errors > 0: return
         result = self.queryexecute(id, collection, 0)
         return result
-    
+
     def exportdatabases(self, nodesdb):
         r = self.grepo
         run = Runner("localhost")
@@ -1266,14 +1269,15 @@ class Context:
                 with suppress(Exception): shutil.rmtree(f'/export/{db}')
                 run.local(f'mkdir -p /export/{db}')
                 run.local(f'chmod 777 /export/{db}')
-                command = f'su - postgres -c "pg_dump -Fd -vv -j {multiprocessing.cpu_count()} -f /export/{db}/database.dump {db}"'
-                logger.info(command)
-                result = run.local(command, hide=False)
-                if result.failed:
-                    self.status.pusherrmessage(f"Export of database {db} failed!")
-                    logger.error(f'Result for {db}: {result.stderr}')
-                else:
-                    logger.info(f'Result for {db}: {result.stderr}')
+                for table in ['objid', 'settings', 'objects', 'nodes', 'sources', 'caches']:
+                    command = f'su - postgres -c "pg_dump -vv -d {db} -t {table} -f /export/{db}/{table}.sql"'
+                    logger.info(command)
+                    result = run.local(command, hide=False)
+                    if result.failed:
+                        self.status.pusherrmessage(f"Export of database {db} failed!")
+                        logger.error(f'Result for {db}/{table}: {result.stderr}')
+                    else:
+                        logger.info(f'Result for {db}/{table}: {result.stderr}')
             except Exception as e:
                 logger.error(f"Error processing database {db}: {str(e)}")
                 self.status.pusherrmessage(f"Error processing database {db}: {str(e)}")
@@ -1286,6 +1290,7 @@ class Context:
                 wdir = f'/export/{d}'
                 if 'kairos_' in d and os.path.isdir(wdir): nodesdb.append(d)
         for db in nodesdb:
+            logger.info(f'Importing database {db} ....‹')
             try:
                 r.execute(f"UPDATE pg_database SET datallowconn = 'false' WHERE datname = '{db}'")
                 r.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}'")
@@ -1294,16 +1299,26 @@ class Context:
                 logger.info(f"Creating database: {db}")
                 run.local(f"su - postgres -c \"psql -c 'CREATE DATABASE {db}'\"", hide=False)
                 logger.info(f"Restoring database: {db}")
-                command = f'su - postgres -c "pg_restore -vv -j {multiprocessing.cpu_count()} -d {db} /export/{db}/database.dump"'
-                logger.info(command)
-                result = run.local(f"{command}", hide=False)
-                if result.failed:
-                    self.status.pusherrmessage(f"Import of database {db} failed!")
-                    logger.error(f'Result for {db}: {result.stderr}')
-                else:
-                    logger.info(f'Result for {db}: {result.stderr}')
-                    r.execute(f"UPDATE pg_database SET datallowconn = 'true' WHERE datname = '{db}'")
-                    logger.info(f"Connections are now possibles on imported database {db}.")
+                for table in ['objid', 'settings', 'objects', 'nodes', 'sources', 'caches']:
+                    command = f'su - postgres -c "psql -d {db} -f /export/{db}/{table}.sql"'
+                    logger.info(command)
+                    result = run.local(f"{command}", hide=False)
+                    if result.failed:
+                        self.status.pusherrmessage(f"Import of database {db}/{table} failed!")
+                        logger.error(f'Result for {db}/{table}: {result.stderr}')
+                    else:
+                        logger.info(f'Result for {db}/{table}: {result.stderr}')
+                for req in ["'create extension plpython3u;'", "'create extension oracle_fdw;'", "'create extension postgres_fdw;'", "'delete from caches;'"]:
+                    command = f'su - postgres -c "psql -d {db} -c {req}"'
+                    logger.info(command)
+                    result = run.local(f"{command}", hide=False)
+                    if result.failed:
+                        self.status.pusherrmessage(f"Import of database {db}/{req} failed!")
+                        logger.error(f'Result for {db}/{req}: {result.stderr}')
+                    else:
+                        logger.info(f'Result for {db}/{req}: {result.stderr}')
+                r.execute(f"UPDATE pg_database SET datallowconn = 'true' WHERE datname = '{db}'")
+                logger.info(f"Connections are now possibles on imported database {db}.")
             except Exception as e:
                 logger.error(f"Error processing database {db}: {str(e)}")
                 self.status.pusherrmessage(f"Error processing database {db}: {str(e)}")
@@ -1398,6 +1413,7 @@ class Context:
         return d
     
     def schedulecacheoperations(self, id, type, name, recursive=False):
+        self.count += 1
         operations = []
         r = self.nrepo
         node = self.getnode(id)
@@ -1479,6 +1495,7 @@ class Context:
     
     def executecacheoperations(self, operations):
         for operation in operations:
+            self.count += 1
             if operation['operation'] == 'checkpart': self.checkpart(operation['nid'], operation['part'], operation['collections'])
             if operation['operation'] == 'removepart': self.removepart(operation['nid'], operation['part'], operation['collections'])
             if operation['operation'] == 'removetable': self.removetable(operation['nid'], operation['part'], operation['collections'])

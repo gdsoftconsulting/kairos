@@ -26,5 +26,5 @@ logger.add('/var/log/streamlit.log', format=logger_format, level=lvl)
 st.success(f'Logging level defined to: {logging}')
 
 if 'callstack' not in st.session_state: st.session_state.callstack = CallStack()
-if awrreport: st.session_state.callstack.call('awrrepmain', 'router')
-if kairos: st.session_state.callstack.call('kairos', 'router')
+if awrreport: st.session_state.callstack.call('pages/awrrepmain.py', 'pages/router.py')
+if kairos: st.session_state.callstack.call('pages/kairos.py', 'pages/router.py')

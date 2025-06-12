@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 from htmlgenerator import *
 from plotly.subplots import make_subplots
 from sqlalchemy.sql import text as alctext
-from streamlit_extras.switch_page_button import switch_page
 from streamlit_ace import st_ace
 from streamlit_theme import st_theme
 from loguru import logger
@@ -60,11 +59,11 @@ class CallStack:
 
     def call(self, page, caller):
         st.session_state.stackpages.append(caller)
-        switch_page(page)
+        st.switch_page(page)
 
     def back(self):
         page = st.session_state.stackpages.pop()
-        switch_page(page)
+        st.switch_page(page)
 
 getcolor = lambda colors, x: colors[x] if x in colors else '#' + hashlib.md5(x.encode('utf-8')).hexdigest()[0:6]
 approx = lambda x, y: min(x, key=lambda z: abs(z-y))
@@ -236,7 +235,7 @@ def kairos_edit_liveobject():
         st.session_state.nodemenu = None
         st.session_state.object =  act['data']['datasource']['liveobject']
         st.session_state.type = 'liveobject'
-        st.session_state.callstack.call('kairosedit', 'kairos')
+        st.session_state.callstack.call('pages/kairosedit.py', 'pages/kairos.py')
     else: st.error(act['message'])
 
 def kairos_copy():
@@ -330,7 +329,7 @@ def kairos_transform_to_d_node():
 
 def kairos_display_node():
     st.session_state.nodemenu = None
-    st.session_state.callstack.call('kairosnode', 'kairos')
+    st.session_state.callstack.call('pages/kairosnode.py', 'pages/kairos.py')
 
 def kairos_display_collection():
     nodesdb = st.session_state.nodesdb
@@ -343,7 +342,7 @@ def kairos_display_collection():
     if collection:
         st.session_state.collection = collection
         st.session_state.nodemenu = None
-        st.session_state.callstack.call('kairoscollection', 'kairos')
+        st.session_state.callstack.call('pages/kairoscollection.py', 'pages/kairos.py')
 
 def kairos_execute_query():
     queries = get_queries()
@@ -351,7 +350,7 @@ def kairos_execute_query():
     if query:
         st.session_state.query = query
         st.session_state.nodemenu = None
-        st.session_state.callstack.call('kairosquery', 'kairos')
+        st.session_state.callstack.call('pages/kairosquery.py', 'pages/kairos.py')
 
 def kairos_run_chart():
     charts = get_charts()
@@ -359,7 +358,7 @@ def kairos_run_chart():
     if chart:
         st.session_state.chart = chart
         st.session_state.nodemenu = None
-        st.session_state.callstack.call('kairoschart', 'kairos')
+        st.session_state.callstack.call('pages/kairoschart.py', 'pages/kairos.py')
 
 def kairos_run_report():
     reports = get_reports()
@@ -367,7 +366,7 @@ def kairos_run_report():
     if report:
         st.session_state.report = report
         st.session_state.nodemenu = None
-        st.session_state.callstack.call('kairosreport', 'kairos')
+        st.session_state.callstack.call('pages/kairosreport.py', 'pages/kairos.py')
 
 def kairos_download_node(): 
     nodesdb = st.session_state.nodesdb
