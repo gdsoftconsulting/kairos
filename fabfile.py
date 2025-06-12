@@ -3,8 +3,8 @@ from fabric import task
 from fabric import Connection
 from loguru import logger
 
-VERSION='9.6'
-PORTKAIROS = 44396
+VERSION='9.7'
+PORTKAIROS = 44397
 PORTSTREAMLIT = 8510
 IMAGE = f'gdsc/kairos:{VERSION}'
 MACHINE = f'kairos{VERSION}'
@@ -78,7 +78,7 @@ def initremote(c):
 
 @task
 def tunnel(c):
-    c.run(f'ssh -L {PORTKAIROS}:localhost:{PORTKAIROS} -L {PORTSTREAMLIT}:localhost:{PORTSTREAMLIT} {REMOTE}', pty=True)
+    localcmd(c, f'ssh -L {PORTKAIROS}:localhost:{PORTKAIROS} -L {PORTSTREAMLIT}:localhost:{PORTSTREAMLIT} {REMOTE}')
 
 @task
 def image(c):
@@ -116,7 +116,7 @@ def network(c):
 
 @task
 def ssh(c):
-    c.run(f'ssh {REMOTE}', pty=True)
+    localcmd(c, f'ssh {REMOTE}', pty=True)
 
 @task
 def boot(c):
